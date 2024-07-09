@@ -1,0 +1,96 @@
+version: '3.4'
+
+services:
+  webapi:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Staging
+    image: aspapi
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ~/.aspnet/https:/https:ro
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+    depends_on:
+      - db
+    networks:
+      - webapinetwork
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+      MYSQL_DATABASE: 'demo'
+      MYSQL_USER: 'user'
+      MYSQL_PASSWORD: ''
+      MYSQL_ROOT_PASSWORD: ''
+    volumes:
+      - dbdata:/var/lib/mysql
+    networks:
+      - webapinetwork
+    ports:
+      - "3307:3306"
+    volumes:
+      - dbdatastg:/var/lib/mysql
+    networks:
+      - webapinetwork
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus:/etc/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - webapinetwork
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: 'securepassword'
+    ports:
+      - "3000:3000"
+    networks:
+      - webapinetwork
+    depends_on:
+      - prometheus
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/otel-collector-config.yaml
+    ports:
+      - "4317:4317"
+      - "55680:55680"
+    networks:
+      - webapinetwork
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    ports:
+      - "9000:9000"
+    networks:
+      - webapinetwork
+
+volumes:
+  dbdatastg:
+  portainer_data:
+
+networks:
+  webapinetwork:
+    driver: bridge

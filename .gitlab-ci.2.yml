@@ -1,0 +1,59 @@
+image: docker:19.03.12
+
+services:
+  - docker:19.03.12-dind
+
+stages:
+  - prepare
+  - build
+  - deploy
+
+variables:
+  CONTAINER_IMAGE_NAME: registry.gitlab.com/your-namespace/your-project
+  DOCKER_DRIVER: overlay2
+  CACHE_KEY: "$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHA"
+  CACHE_PATH: "cache"
+
+before_script:
+  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+
+cache:
+  key: ${CACHE_KEY}
+  paths:
+    - ${CACHE_PATH}/
+
+prepare:
+  stage: prepare
+  script:
+    - echo "Подготовка зависимостей и кеширование"
+    - mkdir -p ${CACHE_PATH}/
+    - docker pull $CONTAINER_IMAGE_NAME:latest || true
+    - docker build --cache-from $CONTAINER_IMAGE_NAME:latest -t $CONTAINER_IMAGE_NAME:cache --target prepare .
+    - docker push $CONTAINER_IMAGE_NAME:cache
+  cache:
+    policy: pull-push
+
+build:
+  stage: build
+  script:
+    - echo "Сборка проекта"
+    - docker build --cache-from $CONTAINER_IMAGE_NAME:cache -t $CONTAINER_IMAGE_NAME:$CI_COMMIT_REF_SLUG .
+    - docker push $CONTAINER_IMAGE_NAME:$CI_COMMIT_REF_SLUG
+  dependencies:
+    - prepare
+  cache:
+    policy: pull
+
+deploy:
+  stage: deploy
+  script:
+    - echo "Развертывание проекта"
+    - docker pull $CONTAINER_IMAGE_NAME:$CI_COMMIT_REF_SLUG
+    - docker tag $CONTAINER_IMAGE_NAME:$CI_COMMIT_REF_SLUG $CONTAINER_IMAGE_NAME:latest
+    - docker push $CONTAINER_IMAGE_NAME:latest
+  only:
+    - master
+  dependencies:
+    - build
+  cache:
+    policy: pull

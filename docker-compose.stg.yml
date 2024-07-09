@@ -1,0 +1,53 @@
+version: '3.4'
+
+services:
+  webapi:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Staging
+    image: aspapi
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ~/.aspnet/https:/https:ro
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+    depends_on:
+      - db
+    networks:
+      - webapinetwork
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+      MYSQL_DATABASE: 'demo'
+      MYSQL_USER: 'user'
+      MYSQL_PASSWORD: ''
+      MYSQL_ROOT_PASSWORD: ''
+    volumes:
+      - dbdata:/var/lib/mysql
+    networks:
+      - webapinetwork
+    ports:
+      - "3307:3306"
+    volumes:
+      - dbdatastg:/var/lib/mysql
+    networks:
+      - webapinetwork
+
+volumes:
+  dbdatastg:
+
+networks:
+  webapinetwork:
+    driver: bridge
